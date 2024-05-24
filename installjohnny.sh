@@ -77,11 +77,22 @@ function instalar_evolution_api_johnnyzap {
     sudo apt install python3-certbot-nginx
     sudo apt update
 
+    # Instalar Node.js e npm
+    echo "Instalando Node.js e npm..."
+    sudo apt install -y nodejs npm
+
+    # Verificar a versão do Node.js
+    echo "Verificando a versão do Node.js instalada..."
+    node -v
+
+    sudo apt install curl -y
+
+    # Instalar PM2 globalmente
+    echo "Instalando PM2..."
+    sudo npm install -g pm2
+
     # Adiciona usuário ao grupo Docker
     sudo usermod -aG docker ${USER}
-
-    # Instalação do pm2
-    sudo npm install -g pm2
 
     # Solicita informações ao usuário
     solicitar_informacoes
