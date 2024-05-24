@@ -157,6 +157,7 @@ EOF
 
     # Instalação do JohnnyZap
     echo "Instalando JohnnyZap..."
+    cd /
     git clone https://github.com/JohnnyLove777/johnnyzap-classic.git
     cd johnnyzap-classic
 
