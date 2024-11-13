@@ -1,12 +1,20 @@
 #!/bin/bash
 
+# Função para verificar se o comando foi executado com sucesso
+function checar_status {
+    if [ $? -ne 0 ]; then
+        echo "❌ Erro: $1"
+        exit 1
+    fi
+}
+
 # Função para solicitar informações ao usuário e armazená-las em variáveis
 function solicitar_informacoes {
 
-    # Loop para solicitar e verificar o dominio
+    # Loop para solicitar e verificar o domínio
     while true; do
         read -p "Digite o domínio (por exemplo, johnny.com.br): " DOMINIO
-        # Verifica se o subdomínio tem um formato válido
+        # Verifica se o domínio tem um formato válido
         if [[ $DOMINIO =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
             break
         else
@@ -25,16 +33,9 @@ function solicitar_informacoes {
         fi
     done
 
-    # Loop para solicitar e verificar o IP da VPS
-    while true; do
-        read -p "Digite o IP da VPS: " IP_VPS
-        # Verifica se o IP tem um formato válido
-        if [[ $IP_VPS =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            break
-        else
-            echo "Por favor, insira um IP válido."
-        fi
-    done
+    # Obter o IP da VPS automaticamente (sem precisar do usuário inserir)
+    IP_VPS=$(curl -s ifconfig.me)
+    echo "O IP da sua VPS é: $IP_VPS"
 
     # Geração da chave de autenticação segura
     AUTH_KEY=$(openssl rand -hex 16)
@@ -84,8 +85,6 @@ function instalar_evolution_api_johnnyzap {
     # Verificar a versão do Node.js
     echo "Verificando a versão do Node.js instalada..."
     node -v
-
-    sudo apt install curl -y
 
     # Instalar PM2 globalmente
     echo "Instalando PM2..."
@@ -143,8 +142,26 @@ EOF
     sudo ln -s /etc/nginx/sites-available/evolution /etc/nginx/sites-enabled
     sudo ln -s /etc/nginx/sites-available/server /etc/nginx/sites-enabled
 
-    # Solicita e instala certificados SSL usando Certbot
-    sudo certbot --nginx --email $EMAIL_INPUT --redirect --agree-tos -d evolution.$DOMINIO_INPUT -d server.$DOMINIO_INPUT
+    # Função de Retry para o Certbot
+    function certbot_retry {
+        local retries=5
+        local count=0
+        while ((count < retries)); do
+            sudo certbot --nginx --email $EMAIL_INPUT --redirect --agree-tos -d evolution.$DOMINIO_INPUT -d server.$DOMINIO_INPUT
+            if [ $? -eq 0 ]; then
+                echo "✅ Certificado SSL obtido com sucesso!"
+                return 0
+            fi
+            echo "⚠️ Certbot falhou. Tentando novamente... ($((count+1)) de $retries)"
+            ((count++))
+            sleep 5
+        done
+        echo "❌ Certbot falhou após $retries tentativas. Verifique se o Certbot está em uso ou se há problemas de configuração."
+        exit 1
+    }
+
+    # Chama a função de retry para o certbot
+    certbot_retry
 
     # Instalação e configuração da Evolution API usando Docker
     docker run --name evolution-api --detach \
@@ -157,9 +174,9 @@ EOF
 
     # Instalação do JohnnyZap
     echo "Instalando JohnnyZap..."
-    cd /
+    cd / || exit
     git clone https://github.com/JohnnyLove777/johnnyzap-classic.git
-    cd johnnyzap-classic
+    cd johnnyzap-classic || exit
 
     echo "Instalando dependências do JohnnyZap..."
     npm install
