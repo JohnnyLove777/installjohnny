@@ -60,44 +60,53 @@ function solicitar_informacoes {
 
 # Função para instalar Evolution API e JohnnyZap
 function instalar_evolution_api_johnnyzap {
-    # Atualização e upgrade do sistema
-    sudo apt update
-    sudo apt upgrade -y
-    sudo apt-add-repository universe
 
-    # Instalação das dependências
-    sudo apt install -y python2-minimal nodejs npm git curl apt-transport-https ca-certificates software-properties-common
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo apt-key add -
-    sudo add-apt-repository "deb [arch=amd64] https://download.docker.com/linux/ubuntu bionic stable"
-    sudo apt update
-    sudo apt install -y docker-ce docker-compose
-    sudo apt update
-    sudo apt install nginx
-    sudo apt update
-    sudo apt install certbot
-    sudo apt install python3-certbot-nginx
-    sudo apt update
+    # Verificar se Docker já está instalado
+    if ! command -v docker &> /dev/null; then
+        echo "Docker não encontrado. Instalando Docker e Docker Compose..."
+        sudo apt update
+        sudo apt install -y docker-ce docker-compose
+        checar_status "Falha ao instalar Docker e Docker Compose."
+    else
+        echo "Docker já está instalado. Pulando a instalação."
+    fi
 
-    # Instalar Node.js e npm
-    echo "Instalando Node.js e npm..."
-    sudo apt install -y nodejs npm
+    # Verificar se o NGINX está instalado
+    if ! command -v nginx &> /dev/null; then
+        echo "Instalando NGINX..."
+        sudo apt install -y nginx
+        checar_status "Falha ao instalar o NGINX."
+    else
+        echo "NGINX já está instalado."
+    fi
 
-    # Verificar a versão do Node.js
-    echo "Verificando a versão do Node.js instalada..."
-    node -v
+    # Instalar Certbot se necessário
+    if ! command -v certbot &> /dev/null; then
+        echo "Instalando Certbot e plugins do NGINX..."
+        sudo apt install -y certbot python3-certbot-nginx
+        checar_status "Falha ao instalar Certbot."
+    else
+        echo "Certbot já está instalado."
+    fi
 
-    # Instalar PM2 globalmente
-    echo "Instalando PM2..."
-    sudo npm install -g pm2
+    # Instalação do Node.js e PM2
+    if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+        echo "Instalando Node.js e npm..."
+        sudo apt install -y nodejs npm
+        checar_status "Falha ao instalar Node.js e npm."
+    fi
 
-    # Adiciona usuário ao grupo Docker
-    sudo usermod -aG docker ${USER}
+    if ! command -v pm2 &> /dev/null; then
+        echo "Instalando PM2..."
+        sudo npm install -g pm2
+        checar_status "Falha ao instalar PM2."
+    fi
 
     # Solicita informações ao usuário
     solicitar_informacoes
 
-    # Criação do arquivo evolution_api_config.sh com base nas informações fornecidas
-cat <<EOF > evolution_api_config.sh
+    # Criação dos arquivos de configuração do NGINX para Evolution API, JohnnyZap e JohnnyDash
+    cat <<EOF > /etc/nginx/sites-available/evolution
 server {
     server_name evolution.$DOMINIO_INPUT;
 
@@ -115,8 +124,7 @@ server {
 }
 EOF
 
-    # Criação do arquivo johnnyzap_server_config.sh com base nas informações fornecidas
-cat <<EOF > johnnyzap_server_config.sh
+    cat <<EOF > /etc/nginx/sites-available/server
 server {
     server_name server.$DOMINIO_INPUT;
 
@@ -134,20 +142,38 @@ server {
 }
 EOF
 
-    # Copia os arquivos de configuração para o diretório do nginx
-    sudo cp evolution_api_config.sh /etc/nginx/sites-available/evolution
-    sudo cp johnnyzap_server_config.sh /etc/nginx/sites-available/server
+    cat <<EOF > /etc/nginx/sites-available/johnnydash
+server {
+    server_name johnnydash.$DOMINIO_INPUT;
 
-    # Cria links simbólicos para ativar os sites no nginx
-    sudo ln -s /etc/nginx/sites-available/evolution /etc/nginx/sites-enabled
-    sudo ln -s /etc/nginx/sites-available/server /etc/nginx/sites-enabled
+    location / {
+        proxy_pass http://127.0.0.1:3031;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_cache_bypass \$http_upgrade;
+    }
+}
+EOF
+
+    # Criação dos links simbólicos e reinicialização do NGINX
+    sudo ln -sf /etc/nginx/sites-available/evolution /etc/nginx/sites-enabled/
+    sudo ln -sf /etc/nginx/sites-available/server /etc/nginx/sites-enabled/
+    sudo ln -sf /etc/nginx/sites-available/johnnydash /etc/nginx/sites-enabled/
+    sudo systemctl restart nginx
+    checar_status "Falha ao reiniciar o NGINX."
 
     # Função de Retry para o Certbot
     function certbot_retry {
         local retries=5
         local count=0
         while ((count < retries)); do
-            sudo certbot --nginx --email $EMAIL_INPUT --redirect --agree-tos -d evolution.$DOMINIO_INPUT -d server.$DOMINIO_INPUT
+            sudo certbot --nginx --email $EMAIL_INPUT --redirect --agree-tos \
+                -d evolution.$DOMINIO_INPUT -d server.$DOMINIO_INPUT -d johnnydash.$DOMINIO_INPUT
             if [ $? -eq 0 ]; then
                 echo "✅ Certificado SSL obtido com sucesso!"
                 return 0
@@ -156,19 +182,21 @@ EOF
             ((count++))
             sleep 5
         done
-        echo "❌ Certbot falhou após $retries tentativas. Verifique se o Certbot está em uso ou se há problemas de configuração."
+        echo "❌ Certbot falhou após $retries tentativas. Verifique a configuração."
         exit 1
     }
 
-    # Chama a função de retry para o certbot
+    # Chama a função de retry para o Certbot
     certbot_retry
 
-    # Instalação e configuração da Evolution API usando Docker
-    docker run --name evolution-api --detach \
-    -p 8080:8080 \
-    -e AUTHENTICATION_API_KEY=$AUTH_KEY_INPUT \
-    atendai/evolution-api \
-    node ./dist/src/main.js
+    # Instalação e configuração da Evolution API usando Docker com volumes persistentes
+    docker run -d \
+        --name evolution-api \
+        -p 8080:8080 \
+        -e AUTHENTICATION_API_KEY=$AUTH_KEY_INPUT \
+        -v evolution_store:/evolution/store \
+        -v evolution_instances:/evolution/instances \
+        atendai/evolution-api
 
     echo "Evolution API instalada e configurada com sucesso!"
 
@@ -181,17 +209,14 @@ EOF
     echo "Instalando dependências do JohnnyZap..."
     npm install
 
-    echo "Instalando ffmpeg..."
-    sudo apt install ffmpeg -y
-
     # Criação do arquivo .env com o IP da VPS
     echo "Criando arquivo .env..."
 cat <<EOF > .env
 IP_VPS=http://$IP_VPS_INPUT
 EOF
 
-    # Iniciando JohnnyZap com pm2
-    echo "Iniciando JohnnyZap com pm2..."
+    # Iniciando JohnnyZap com PM2
+    echo "Iniciando JohnnyZap com PM2..."
     pm2 start ecosystem.config.js
 
     echo "JohnnyZap instalado e configurado com sucesso!"
