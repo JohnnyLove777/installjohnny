@@ -105,7 +105,7 @@ function instalar_evolution_api_johnnyzap {
     # Solicita informações ao usuário
     solicitar_informacoes
 
-    # Criação dos arquivos de configuração do NGINX para Evolution API, JohnnyZap e JohnnyDash
+    # Criação dos arquivos de configuração do NGINX para Evolution API, JohnnyZap
     cat <<EOF > /etc/nginx/sites-available/evolution
 server {
     server_name evolution.$DOMINIO_INPUT;
@@ -140,30 +140,11 @@ server {
         proxy_cache_bypass \$http_upgrade;
     }
 }
-EOF
-
-    cat <<EOF > /etc/nginx/sites-available/johnnydash
-server {
-    server_name johnnydash.$DOMINIO_INPUT;
-
-    location / {
-        proxy_pass http://127.0.0.1:3031;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_cache_bypass \$http_upgrade;
-    }
-}
-EOF
+EOF   
 
     # Criação dos links simbólicos e reinicialização do NGINX
     sudo ln -sf /etc/nginx/sites-available/evolution /etc/nginx/sites-enabled/
-    sudo ln -sf /etc/nginx/sites-available/server /etc/nginx/sites-enabled/
-    sudo ln -sf /etc/nginx/sites-available/johnnydash /etc/nginx/sites-enabled/
+    sudo ln -sf /etc/nginx/sites-available/server /etc/nginx/sites-enabled/    
     sudo systemctl restart nginx
     checar_status "Falha ao reiniciar o NGINX."
 
@@ -173,7 +154,7 @@ EOF
         local count=0
         while ((count < retries)); do
             sudo certbot --nginx --email $EMAIL_INPUT --redirect --agree-tos \
-                -d evolution.$DOMINIO_INPUT -d server.$DOMINIO_INPUT -d johnnydash.$DOMINIO_INPUT
+                -d evolution.$DOMINIO_INPUT -d server.$DOMINIO_INPUT
             if [ $? -eq 0 ]; then
                 echo "✅ Certificado SSL obtido com sucesso!"
                 return 0
