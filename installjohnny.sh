@@ -61,6 +61,10 @@ function solicitar_informacoes {
 # Função para instalar Evolution API e JohnnyZap
 function instalar_evolution_api_johnnyzap {
 
+    # Certificar-se de que está no diretório raiz
+    cd ~ || exit
+    echo "Diretório atual: $(pwd)"
+
     # Verificar se Docker já está instalado
     if ! command -v docker &> /dev/null; then
         echo "Docker não encontrado. Instalando Docker e Docker Compose..."
@@ -105,7 +109,7 @@ function instalar_evolution_api_johnnyzap {
     # Solicita informações ao usuário
     solicitar_informacoes
 
-    # Criação dos arquivos de configuração do NGINX para Evolution API, JohnnyZap
+    # Criação dos arquivos de configuração do NGINX para Evolution API e JohnnyZap
     cat <<EOF > /etc/nginx/sites-available/evolution
 server {
     server_name evolution.$DOMINIO_INPUT;
@@ -140,11 +144,11 @@ server {
         proxy_cache_bypass \$http_upgrade;
     }
 }
-EOF   
+EOF
 
     # Criação dos links simbólicos e reinicialização do NGINX
     sudo ln -sf /etc/nginx/sites-available/evolution /etc/nginx/sites-enabled/
-    sudo ln -sf /etc/nginx/sites-available/server /etc/nginx/sites-enabled/    
+    sudo ln -sf /etc/nginx/sites-available/server /etc/nginx/sites-enabled/
     sudo systemctl restart nginx
     checar_status "Falha ao reiniciar o NGINX."
 
@@ -181,9 +185,9 @@ EOF
 
     echo "Evolution API instalada e configurada com sucesso!"
 
-    # Instalação do JohnnyZap
-    echo "Instalando JohnnyZap..."
-    cd / || exit
+    # Instalação do JohnnyZap em um diretório acessível pelo usuário
+    echo "Instalando JohnnyZap em /home/$USER/johnnyzap-classic..."
+    cd /home/$USER || exit
     git clone https://github.com/JohnnyLove777/johnnyzap-classic.git
     cd johnnyzap-classic || exit
 
