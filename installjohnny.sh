@@ -192,7 +192,7 @@ EOF
         -e AUTHENTICATION_API_KEY=$AUTH_KEY_INPUT \
         -v evolution_store:/evolution/store \
         -v evolution_instances:/evolution/instances \
-        atendai/evolution-api:v1.8.0
+        atendai/evolution-api:v1.8.2
 
     echo "Evolution API instalada e configurada com sucesso!"
 
