@@ -1,5 +1,15 @@
 #!/bin/bash
 
+# Função para exibir etapas com mensagens de feedback
+function print_step {
+    echo -e "\n🔹 $1"
+}
+
+# Função para exibir mensagens de sucesso
+function print_success {
+    echo -e "✅ $1\n"
+}
+
 # Função para verificar se o comando foi executado com sucesso
 function checar_status {
     if [ $? -ne 0 ]; then
@@ -8,10 +18,8 @@ function checar_status {
     fi
 }
 
-# Função para solicitar informações ao usuário e armazená-las em variáveis
+# Função para solicitar informações ao usuário
 function solicitar_informacoes {
-
-    # Loop para solicitar e verificar o domínio
     while true; do
         read -p "Digite o domínio (por exemplo, johnny.com.br): " DOMINIO
         if [[ $DOMINIO =~ ^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
@@ -21,7 +29,6 @@ function solicitar_informacoes {
         fi
     done    
 
-    # Loop para solicitar e verificar o e-mail
     while true; do
         read -p "Digite o e-mail para cadastro do Certbot (sem espaços): " EMAIL
         if [[ $EMAIL =~ ^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$ ]]; then
@@ -31,15 +38,13 @@ function solicitar_informacoes {
         fi
     done
 
-    # Obter o IP da VPS automaticamente
     IP_VPS=$(curl -s ifconfig.me)
     echo "O IP da sua VPS é: $IP_VPS"
 
-    # Geração da chave de autenticação segura
     AUTH_KEY=$(openssl rand -hex 16)
     echo "Sua chave de autenticação é: $AUTH_KEY"
     echo "Por favor, copie esta chave e armazene em um local seguro."
-    
+
     while true; do
         read -p "Confirme que você copiou a chave (y/n): " confirm
         if [[ $confirm == "y" ]]; then
@@ -55,36 +60,36 @@ function solicitar_informacoes {
     IP_VPS_INPUT=$IP_VPS
 }
 
-# Função para instalar Evolution API e JohnnyZap
-function instalar_evolution_api_johnnyzap {
+# Função para configurar Docker
+function configurar_docker {
+    print_step "1. Instalando dependências básicas... 🍀"
+    sudo apt update && sudo apt upgrade -y
+    sudo apt install -y software-properties-common apt-transport-https ca-certificates curl wget git nano nginx python3-certbot-nginx
+    checar_status "Erro ao instalar dependências básicas."
 
-    cd ~ || exit
-    echo "🌟 Diretório atual: $(pwd)"
-
-    # Instalação de dependências
-    echo "🔧 Instalando dependências..."
+    print_step "2. Instalando Docker... 🐳"
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
     sudo apt update
-    sudo apt install -y ca-certificates curl gnupg lsb-release nginx certbot python3-certbot-nginx nodejs npm
-    checar_status "Erro ao instalar dependências."
+    sudo apt install -y docker-ce docker-ce-cli containerd.io
+    sudo usermod -aG docker $USER
+    checar_status "Erro ao instalar Docker."
 
-    if ! command -v docker &> /dev/null; then
-        echo "🐳 Instalando Docker..."
-        sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-        checar_status "Erro ao instalar Docker."
-    else
-        echo "✅ Docker já instalado."
-    fi
+    print_step "3. Instalando Docker Compose... 🔧"
+    sudo curl -L "https://github.com/docker/compose/releases/download/2.26.0/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+    checar_status "Erro ao instalar Docker Compose."
 
-    if ! command -v pm2 &> /dev/null; then
-        echo "🚀 Instalando PM2..."
-        sudo npm install -g pm2
-        checar_status "Erro ao instalar PM2."
-    fi
+    print_success "Docker e Docker Compose instalados com sucesso!"
+}
+
+# Função principal de instalação
+function instalar_evolution_api_johnnyzap {
+    configurar_docker
 
     solicitar_informacoes
 
-    # Configurações do NGINX
-    echo "📝 Configurando NGINX..."
+    print_step "4. Configurando NGINX... 🌐"
     cat <<EOF > /etc/nginx/sites-available/evolution
 server {
     server_name evolution.$DOMINIO_INPUT;
@@ -124,10 +129,9 @@ EOF
     sudo ln -sf /etc/nginx/sites-available/evolution /etc/nginx/sites-enabled/
     sudo ln -sf /etc/nginx/sites-available/server /etc/nginx/sites-enabled/
     sudo nginx -t && sudo systemctl restart nginx
-    checar_status "Erro ao reiniciar NGINX."
+    checar_status "Erro ao reiniciar o NGINX."
 
-    # Certificados SSL
-    echo "🔒 Gerando certificados SSL com Certbot..."
+    print_step "5. Gerando certificados SSL... 🔒"
     certbot_retry() {
         for i in {1..5}; do
             sudo certbot --nginx --email $EMAIL_INPUT --redirect --agree-tos \
@@ -140,8 +144,7 @@ EOF
     }
     certbot_retry
 
-    # Instalação do Evolution API
-    echo "🐳 Configurando Evolution API (v1.8.0)..."
+    print_step "6. Configurando Evolution API... 🔧"
     docker run -d \
         --name evolution-api \
         -p 8099:8099 \
@@ -151,8 +154,7 @@ EOF
         atendai/evolution-api:v1.8.0
     checar_status "Erro ao configurar Evolution API."
 
-    # Instalação do JohnnyZap
-    echo "📦 Configurando JohnnyZap..."
+    print_step "7. Configurando JohnnyZap... 📦"
     cd /root || exit
     git clone https://github.com/JohnnyLove777/johnnyzap-classic.git
     cd johnnyzap-classic || exit
@@ -162,9 +164,9 @@ IP_VPS=http://$IP_VPS_INPUT
 EOF
     pm2 start ecosystem.config.js
     pm2 save
-    echo "✅ JohnnyZap configurado e rodando com PM2."
+    print_success "JohnnyZap configurado e rodando com PM2."
 
-    echo "🎉 Instalação completa! Evolution API e JohnnyZap prontos 🚀"
+    print_success "🎉 Instalação completa! Evolution API e JohnnyZap prontos 🚀"
 }
 
 # Chamada principal
