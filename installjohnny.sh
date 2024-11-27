@@ -119,7 +119,7 @@ server {
     server_name evolution.$DOMINIO_INPUT;
 
     location / {
-        proxy_pass http://127.0.0.1:8099;
+        proxy_pass http://127.0.0.1:8080;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -158,11 +158,11 @@ EOF
     print_step "5. Configurando Evolution API... 🔧"
     docker run -d \
         --name evolution-api \
-        -p 8099:8099 \
+        -p 8080:8080 \
         -e AUTHENTICATION_API_KEY=$AUTH_KEY_INPUT \
         -v evolution_store:/evolution/store \
         -v evolution_instances:/evolution/instances \
-        atendai/evolution-api:v1.8.0
+        atendai/evolution-api:v1.8.2
     checar_status "Erro ao configurar Evolution API."
 
     print_step "6. Configurando JohnnyZap... 📦"
