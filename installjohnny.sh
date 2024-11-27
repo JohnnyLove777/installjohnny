@@ -18,6 +18,30 @@ function checar_status {
     fi
 }
 
+# Função para instalar Node.js, npm e PM2
+function instalar_node_pm2 {
+    print_step "Instalando Node.js, npm e PM2... 🔥"
+
+    # Verificar se o Node.js já está instalado
+    if ! command -v node &> /dev/null || ! command -v npm &> /dev/null; then
+        curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+        sudo apt install -y nodejs
+        checar_status "Erro ao instalar Node.js e npm."
+        print_success "Node.js e npm instalados com sucesso!"
+    else
+        print_success "Node.js e npm já estão instalados!"
+    fi
+
+    # Verificar se o PM2 já está instalado
+    if ! command -v pm2 &> /dev/null; then
+        sudo npm install -g pm2
+        checar_status "Erro ao instalar PM2."
+        print_success "PM2 instalado com sucesso!"
+    else
+        print_success "PM2 já está instalado!"
+    fi
+}
+
 # Função para solicitar informações ao usuário
 function solicitar_informacoes {
     while true; do
@@ -86,7 +110,7 @@ function configurar_docker {
 # Função principal de instalação
 function instalar_evolution_api_johnnyzap {
     configurar_docker
-
+    instalar_node_pm2
     solicitar_informacoes
 
     print_step "4. Configurando NGINX... 🌐"
@@ -131,20 +155,7 @@ EOF
     sudo nginx -t && sudo systemctl restart nginx
     checar_status "Erro ao reiniciar o NGINX."
 
-    print_step "5. Gerando certificados SSL... 🔒"
-    certbot_retry() {
-        for i in {1..5}; do
-            sudo certbot --nginx --email $EMAIL_INPUT --redirect --agree-tos \
-                -d evolution.$DOMINIO_INPUT -d server.$DOMINIO_INPUT && return 0
-            echo "⚠️ Tentativa $i de 5 falhou. Tentando novamente..."
-            sleep 5
-        done
-        echo "❌ Falha ao gerar certificados SSL."
-        exit 1
-    }
-    certbot_retry
-
-    print_step "6. Configurando Evolution API... 🔧"
+    print_step "5. Configurando Evolution API... 🔧"
     docker run -d \
         --name evolution-api \
         -p 8099:8099 \
@@ -154,7 +165,7 @@ EOF
         atendai/evolution-api:v1.8.0
     checar_status "Erro ao configurar Evolution API."
 
-    print_step "7. Configurando JohnnyZap... 📦"
+    print_step "6. Configurando JohnnyZap... 📦"
     cd /root || exit
     git clone https://github.com/JohnnyLove777/johnnyzap-classic.git
     cd johnnyzap-classic || exit
